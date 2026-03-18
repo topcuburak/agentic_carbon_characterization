@@ -109,17 +109,24 @@ class FrameworkAdapter(ABC):
     a uniform interface for running tasks and collecting metrics.
     """
 
-    def __init__(self, model_config: ModelConfig, tools: dict[str, Any]):
+    def __init__(self, model_config: ModelConfig, tools: dict[str, Any], power_monitor=None):
         """
         Initialize the adapter.
 
         Args:
             model_config: Configuration for the LLM to use.
             tools: Tool registry dict from tools/__init__.py.
+            power_monitor: Optional PowerMonitor instance for phase attribution.
         """
         self.model_config = model_config
         self.tools = tools
+        self.power_monitor = power_monitor
         self._metrics: RunMetrics | None = None
+
+    def _set_phase(self, phase):
+        """Set power monitor phase if monitor is attached."""
+        if self.power_monitor:
+            self.power_monitor.set_phase(phase)
 
     @property
     @abstractmethod

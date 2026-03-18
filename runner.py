@@ -28,26 +28,26 @@ from tools.setup_knowledge_base import create_knowledge_base
 
 # ─── Framework Factory ───────────────────────────────────────────────────────
 
-def get_adapter(framework_name: str, model_config, tools):
+def get_adapter(framework_name: str, model_config, tools, power_monitor=None):
     """Instantiate the appropriate framework adapter."""
     if framework_name == "mock":
         from frameworks.mock_agent import MockAdapter
-        return MockAdapter(model_config, tools)
+        return MockAdapter(model_config, tools, power_monitor=power_monitor)
     elif framework_name == "langgraph":
         from frameworks.langgraph_agent import LangGraphAdapter
-        return LangGraphAdapter(model_config, tools)
+        return LangGraphAdapter(model_config, tools, power_monitor=power_monitor)
     elif framework_name == "crewai":
         from frameworks.crewai_agent import CrewAIAdapter
-        return CrewAIAdapter(model_config, tools)
+        return CrewAIAdapter(model_config, tools, power_monitor=power_monitor)
     elif framework_name == "smolagents":
         from frameworks.smolagents_agent import SmolagentsAdapter
-        return SmolagentsAdapter(model_config, tools)
+        return SmolagentsAdapter(model_config, tools, power_monitor=power_monitor)
     elif framework_name == "autogen":
         from frameworks.autogen_agent import AutoGenAdapter
-        return AutoGenAdapter(model_config, tools)
+        return AutoGenAdapter(model_config, tools, power_monitor=power_monitor)
     elif framework_name == "openai_agents":
         from frameworks.openai_agents_agent import OpenAIAgentsAdapter
-        return OpenAIAgentsAdapter(model_config, tools)
+        return OpenAIAgentsAdapter(model_config, tools, power_monitor=power_monitor)
     else:
         raise ValueError(f"Unknown framework: {framework_name}")
 
@@ -243,10 +243,7 @@ def run_experiments(
         # ── Run baselines first ──────────────────────────────────────
         if run_baseline:
             print(f"\n  Running baselines (single-shot, no tools)...")
-            # Use the first framework in the list for baseline (or mock if testing)
             baseline_fw = frameworks[0] if frameworks else "langgraph"
-            baseline_adapter = get_adapter(baseline_fw, model_config, TOOL_REGISTRY)
-            baseline_adapter.setup()
 
             for task in tasks:
                 for rep in range(repetitions):
@@ -262,7 +259,10 @@ def run_experiments(
                             output_dir=output_dir / "power_traces",
                         )
                         monitor.start()
-                        monitor.set_phase(Phase.INFERENCE)
+
+                    # Create adapter with power monitor attached
+                    baseline_adapter = get_adapter(baseline_fw, model_config, TOOL_REGISTRY, power_monitor=monitor)
+                    baseline_adapter.setup()
 
                     try:
                         metrics = baseline_adapter.run_single_shot(
@@ -284,27 +284,16 @@ def run_experiments(
                         power_report = monitor.get_report()
                         monitor.save_trace(power_report)
 
+                    baseline_adapter.teardown()
                     eval_result = evaluate(task, metrics)
                     save_run_result(metrics, eval_result, power_report, rep, True, output_dir)
                     status = "OK" if metrics.success else "FAIL"
                     print(f"{status} ({metrics.wall_clock_ms}ms, {metrics.total_tokens} tok)")
 
-            baseline_adapter.teardown()
-
         # ── Run agentic frameworks ───────────────────────────────────
         for fw_name in frameworks:
             print(f"\n  Framework: {fw_name}")
             print(f"  {'-'*50}")
-
-            try:
-                adapter = get_adapter(fw_name, model_config, TOOL_REGISTRY)
-                adapter.setup()
-            except Exception as e:
-                print(f"  ERROR: Failed to setup {fw_name}: {e}")
-                errors.append(f"Setup {fw_name}: {e}")
-                # Skip all tasks for this framework
-                run_count += len(tasks) * repetitions
-                continue
 
             for task in tasks:
                 for rep in range(repetitions):
@@ -320,9 +309,12 @@ def run_experiments(
                             output_dir=output_dir / "power_traces",
                         )
                         monitor.start()
-                        monitor.set_phase(Phase.ORCHESTRATION)
 
                     try:
+                        # Create adapter per-run with power monitor attached
+                        adapter = get_adapter(fw_name, model_config, TOOL_REGISTRY, power_monitor=monitor)
+                        adapter.setup()
+
                         metrics = adapter.run_task(
                             task_prompt=task.prompt,
                             task_id=task.id,
@@ -330,6 +322,7 @@ def run_experiments(
                             system_prompt=task.system_prompt,
                             max_steps=EXPERIMENT_CONFIG.max_agent_steps,
                         )
+                        adapter.teardown()
                     except Exception as e:
                         metrics = RunMetrics(
                             framework=fw_name, model=model_config.name,
@@ -349,8 +342,6 @@ def run_experiments(
                     status = "OK" if metrics.success else "FAIL"
                     print(f"{status} ({metrics.wall_clock_ms}ms, {metrics.total_tokens} tok, "
                           f"{metrics.num_llm_calls} LLM calls, {metrics.num_tool_calls} tool calls)")
-
-            adapter.teardown()
 
     # Cleanup
     if mock_server:

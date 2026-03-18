@@ -36,12 +36,16 @@ class MockAdapter(FrameworkAdapter):
             task_category=task_category,
         )
 
+        from power_monitor import Phase
+
         start = time.time()
+        self._set_phase(Phase.ORCHESTRATION)
 
         # Simulate 2-5 agent steps
         num_steps = random.randint(2, 5)
         for step in range(num_steps):
             # Simulate LLM call
+            self._set_phase(Phase.INFERENCE)
             input_tok = random.randint(200, 800)
             output_tok = random.randint(50, 300)
             llm_dur = random.randint(100, 500)
@@ -57,6 +61,7 @@ class MockAdapter(FrameworkAdapter):
 
             # Simulate tool call (not on last step)
             if step < num_steps - 1:
+                self._set_phase(Phase.TOOL_EXECUTION)
                 from tools.instrumented import call_tool_instrumented
 
                 tool_names = list(self.tools.keys())
@@ -90,8 +95,10 @@ class MockAdapter(FrameworkAdapter):
                     cpu_energy_j=instr["cpu_energy_j"],
                 ))
 
+            self._set_phase(Phase.ORCHESTRATION)
             metrics.num_agent_steps += 1
 
+        self._set_phase(Phase.IDLE)
         metrics.final_output = f"[Mock answer for {task_id}] The answer is 42."
         metrics.success = True
         metrics.wall_clock_ms = int((time.time() - start) * 1000)
@@ -112,7 +119,10 @@ class MockAdapter(FrameworkAdapter):
             task_category=task_category,
         )
 
+        from power_monitor import Phase
+
         start = time.time()
+        self._set_phase(Phase.INFERENCE)
         time.sleep(0.02)
 
         input_tok = random.randint(150, 500)
@@ -126,6 +136,7 @@ class MockAdapter(FrameworkAdapter):
             completion_preview="[Mock single-shot response]",
         ))
 
+        self._set_phase(Phase.IDLE)
         metrics.final_output = f"[Mock baseline answer for {task_id}]"
         metrics.success = True
         metrics.wall_clock_ms = int((time.time() - start) * 1000)
