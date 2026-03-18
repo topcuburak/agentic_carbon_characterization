@@ -1,7 +1,7 @@
 #!/bin/bash
-#PBS -l ngpus=2
-#PBS -l ncpus=16
-#PBS -l walltime=48:00:00
+#PBS -l ngpus=1
+#PBS -l ncpus=8
+#PBS -l walltime=12:00:00
 #PBS -q workq@e5-cse-cbgpu01.eecscl.psu.edu
 #PBS -N vllm-serve
 #PBS -M bvt5283@psu.edu
@@ -16,8 +16,6 @@
 # ──────────────────────────────────────────────────────────────────────────────
 
 export PATH="/scratch/$USER/anaconda3/bin:/scratch/$USER/anaconda3/condabin:$PATH"
-eval "$(/usr/local/anaconda3/bin/conda shell.bash hook)"
-conda activate agentic-carbon
 
 MODEL="${MODEL:-meta-llama/Llama-3.1-8B-Instruct}"
 TP="${TP:-1}"
