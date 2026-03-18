@@ -1,27 +1,24 @@
 #!/bin/bash
-#PBS -l ngpus=1
-#PBS -l ncpus=8
+#PBS -l ngpus=2
+#PBS -l ncpus=16
 #PBS -l walltime=48:00:00
-#PBS -l mem=80g
 #PBS -q workq@e5-cse-cbgpu01.eecscl.psu.edu
 #PBS -N vllm-serve
-#PBS -M CHANGE-TO-YOUR-PSU-EMAIL
+#PBS -M bvt5283@psu.edu
 #PBS -m bea
 
 # ─── vLLM Model Server ───────────────────────────────────────────────────────
 # Serves a model via OpenAI-compatible API on port 8000.
-# Submit BEFORE running experiments.
 #
 # Usage:
-#   For Llama 8B:   MODEL=meta-llama/Llama-3.1-8B-Instruct TP=1 qsub serve_vllm.pbs
-#   For Qwen 0.8B:  MODEL=Qwen/Qwen3.5-0.8B TP=1 qsub serve_vllm.pbs
+#   qsub scripts/serve_vllm.pbs
+#   MODEL=Qwen/Qwen2.5-0.5B-Instruct qsub scripts/serve_vllm.pbs
 # ──────────────────────────────────────────────────────────────────────────────
 
-SCRATCH="/scratch/$USER"
-export PATH="$SCRATCH/anaconda3/bin:$SCRATCH/anaconda3/condabin:$PATH"
-source activate agentic_bench
+export PATH="/scratch/$USER/anaconda3/bin:/scratch/$USER/anaconda3/condabin:$PATH"
+eval "$(/usr/local/anaconda3/bin/conda shell.bash hook)"
+conda activate agentic-carbon
 
-# Defaults
 MODEL="${MODEL:-meta-llama/Llama-3.1-8B-Instruct}"
 TP="${TP:-1}"
 PORT="${PORT:-8000}"
@@ -30,9 +27,8 @@ echo "=== Starting vLLM server ==="
 echo "Model: $MODEL"
 echo "Tensor Parallel: $TP"
 echo "Port: $PORT"
+echo "Node: $(hostname)"
 echo "Time: $(date)"
-
-cd $SCRATCH/agentic
 
 python -m vllm.entrypoints.openai.api_server \
     --model "$MODEL" \
