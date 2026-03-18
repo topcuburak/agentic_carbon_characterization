@@ -22,6 +22,15 @@ export HF_TOKEN="hf_PSZFejUzwVstly emmVugoHjslhAnznQLjO"
 export HF_HOME=/scratch/bvt5283/.cache/huggingface
 export HF_DATASETS_CACHE=/scratch/bvt5283/.cache/huggingface/datasets
 
+# PBS sets CUDA_VISIBLE_DEVICES to GPU UUIDs; vLLM needs integer indices
+# When UUIDs are set, the GPUs are already isolated — just remap to 0,1,...
+if [[ "$CUDA_VISIBLE_DEVICES" == *"GPU-"* ]]; then
+    NUM_GPUS=$(echo "$CUDA_VISIBLE_DEVICES" | tr ',' '\n' | wc -l)
+    echo "PBS assigned GPUs (UUIDs): $CUDA_VISIBLE_DEVICES"
+    export CUDA_VISIBLE_DEVICES=$(seq -s ',' 0 $((NUM_GPUS - 1)))
+    echo "Remapped to indices: $CUDA_VISIBLE_DEVICES"
+fi
+
 MODEL="${MODEL:-meta-llama/Llama-3.1-8B-Instruct}"
 TP="${TP:-1}"
 PORT="${PORT:-8000}"
