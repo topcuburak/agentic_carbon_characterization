@@ -1,0 +1,33 @@
+# Core
+numpy>=1.24
+matplotlib>=3.7
+scipy>=1.10
+
+# Power monitoring
+nvidia-ml-py>=12.0
+
+# vLLM client (OpenAI-compatible)
+openai>=1.0
+
+# Framework: LangGraph
+langgraph>=0.2
+langchain-openai>=0.2
+langchain-core>=0.3
+
+# Framework: CrewAI
+crewai>=0.80
+litellm>=1.0
+
+# Framework: smolagents
+smolagents>=1.0
+
+# Framework: AutoGen
+autogen-agentchat>=0.4
+autogen-ext[openai]>=0.4
+autogen-core>=0.4
+
+# Framework: OpenAI Agents SDK
+openai-agents>=0.1
+
+# Utilities
+requests>=2.28

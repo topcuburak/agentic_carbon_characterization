@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+test_results/
+results/
+tasks/datasets/
+sandbox/
+*.db
+.env
