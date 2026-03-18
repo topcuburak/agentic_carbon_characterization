@@ -15,7 +15,8 @@
 #   MODEL=Qwen/Qwen2.5-0.5B-Instruct qsub scripts/serve_vllm.pbs
 # ──────────────────────────────────────────────────────────────────────────────
 
-export PATH="/scratch/$USER/anaconda3/bin:/scratch/$USER/anaconda3/condabin:$PATH"
+eval "$(/usr/local/anaconda3/bin/conda shell.bash hook)"
+conda activate agentic-carbon
 
 MODEL="${MODEL:-meta-llama/Llama-3.1-8B-Instruct}"
 TP="${TP:-1}"
@@ -34,5 +35,5 @@ python -m vllm.entrypoints.openai.api_server \
     --port "$PORT" \
     --api-key "EMPTY" \
     --max-model-len 8192 \
-    --enable-auto-tool-choice \
+    --enable-auto-tool-choice \cat v
     --tool-call-parser hermes
