@@ -6,6 +6,8 @@
 #PBS -N vllm-serve
 #PBS -M bvt5283@psu.edu
 #PBS -m bea
+#PBS -o /scratch/bvt5283/agentic_carbon_characterization/vllm-serve.log
+#PBS -e /scratch/bvt5283/agentic_carbon_characterization/vllm-serve.err
 
 # ─── vLLM Model Server ───────────────────────────────────────────────────────
 # Serves a model via OpenAI-compatible API on port 8000.
