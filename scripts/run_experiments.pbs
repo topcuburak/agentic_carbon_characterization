@@ -2,41 +2,57 @@
 #PBS -l ngpus=2
 #PBS -l ncpus=16
 #PBS -l walltime=72:00:00
-#PBS -l mem=160g
 #PBS -q workq@e5-cse-cbgpu01.eecscl.psu.edu
 #PBS -N agentic-bench
-#PBS -M CHANGE-TO-YOUR-PSU-EMAIL
+#PBS -M bvt5283@psu.edu
 #PBS -m bea
 
 # ─── Agentic AI Benchmark Runner ─────────────────────────────────────────────
-# Runs the full experiment suite.
-# NOTE: vLLM must already be serving (submit serve_vllm.pbs first, or run
-#       vLLM in the background within this script).
-#
 # This script:
-#   1. Starts vLLM server for the specified model in the background
-#   2. Waits for it to be ready
-#   3. Runs all experiments
-#   4. Kills vLLM server
-#   5. Repeats for the second model
+#   1. Activates conda environment
+#   2. Starts vLLM server for a model in the background
+#   3. Waits for it to be ready
+#   4. Runs all experiments
+#   5. Kills vLLM, repeats for next model
+#
+# Submit with:  qsub scripts/run_experiments.pbs
+# Or with env:  qsub -V scripts/run_experiments.pbs
 # ──────────────────────────────────────────────────────────────────────────────
 
 set -e
 
-SCRATCH="/scratch/$USER"
-PROJECT="$SCRATCH/agentic"
-export PATH="$SCRATCH/anaconda3/bin:$SCRATCH/anaconda3/condabin:$PATH"
-source activate agentic_bench
+# ─── Environment setup ───────────────────────────────────────────────────────
 
-cd $PROJECT
+SCRATCH="/scratch2/$USER"
+PROJECT="$SCRATCH/agentic_carbon_characterization"
 
-# ─── Helper: Start vLLM and wait ─────────────────────────────────────────────
+# Activate conda
+export PATH="$SCRATCH/conda_envs/agentic/bin:$PATH"
+source activate $SCRATCH/conda_envs/agentic 2>/dev/null || conda activate agentic
+
+cd "$PROJECT"
+
+# Export for runner
+export VLLM_BASE_URL="http://localhost:8000/v1"
+export VLLM_API_KEY="EMPTY"
+
+echo "=========================================="
+echo "  Agentic AI Benchmark - PBS Job"
+echo "  Node: $(hostname)"
+echo "  GPUs: $(nvidia-smi -L 2>/dev/null | wc -l) visible"
+echo "  Started: $(date)"
+echo "=========================================="
+
+# ─── Helper functions ────────────────────────────────────────────────────────
+
+VLLM_PID=""
 
 start_vllm() {
     local model=$1
     local tp=$2
     local port=${3:-8000}
 
+    echo ""
     echo "=== Starting vLLM: $model (TP=$tp) on port $port ==="
     python -m vllm.entrypoints.openai.api_server \
         --model "$model" \
@@ -48,11 +64,12 @@ start_vllm() {
         --tool-call-parser hermes &
     VLLM_PID=$!
 
-    # Wait for server to be ready (max 5 min)
-    echo "Waiting for vLLM to be ready..."
+    echo "Waiting for vLLM (PID=$VLLM_PID) to be ready..."
     for i in $(seq 1 60); do
-        if curl -s http://localhost:$port/health > /dev/null 2>&1; then
-            echo "vLLM ready after ~${i}0 seconds."
+        if curl -s "http://localhost:$port/health" > /dev/null 2>&1; then
+            echo "vLLM ready after ~$((i * 5)) seconds."
+            # Verify model is loaded
+            curl -s "http://localhost:$port/v1/models" | python -m json.tool
             return 0
         fi
         sleep 5
@@ -66,9 +83,12 @@ stop_vllm() {
     if [ -n "$VLLM_PID" ]; then
         echo "Stopping vLLM (PID=$VLLM_PID)..."
         kill $VLLM_PID 2>/dev/null
-        wait $VLLM_PID 2>/dev/null
+        wait $VLLM_PID 2>/dev/null || true
+        VLLM_PID=""
     fi
 }
+
+trap stop_vllm EXIT
 
 # ─── Model 1: Llama 3.1 8B ──────────────────────────────────────────────────
 
@@ -79,8 +99,6 @@ echo "=========================================="
 
 start_vllm "meta-llama/Llama-3.1-8B-Instruct" 1
 
-export VLLM_BASE_URL="http://localhost:8000/v1"
-
 python runner.py \
     --models llama-8b \
     --reps 3 \
@@ -88,14 +106,14 @@ python runner.py \
 
 stop_vllm
 
-# ─── Model 2: Qwen3.5 0.8B ──────────────────────────────────────────────────
+# ─── Model 2: Qwen 0.8B ─────────────────────────────────────────────────────
 
 echo ""
 echo "=========================================="
-echo "  MODEL 2: Qwen3.5-0.8B"
+echo "  MODEL 2: Qwen2.5-0.5B-Instruct"
 echo "=========================================="
 
-start_vllm "Qwen/Qwen3.5-0.8B" 1
+start_vllm "Qwen/Qwen2.5-0.5B-Instruct" 1
 
 python runner.py \
     --models qwen-0.8b \
@@ -108,10 +126,11 @@ stop_vllm
 
 echo ""
 echo "=== Generating analysis plots ==="
-python -m analysis.plots
+python -m analysis.plots --results-dir "$PROJECT/results" || echo "Plot generation failed (non-fatal)"
 
 echo ""
-echo "=== ALL EXPERIMENTS COMPLETE ==="
-echo "Results: $PROJECT/results/"
-echo "Figures: $PROJECT/results/figures/"
-echo "Time: $(date)"
+echo "=========================================="
+echo "  ALL EXPERIMENTS COMPLETE"
+echo "  Results: $PROJECT/results/"
+echo "  Finished: $(date)"
+echo "=========================================="
