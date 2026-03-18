@@ -63,6 +63,12 @@ class PowerConfig:
     use_rapl: bool = True                 # Intel RAPL for CPU power
     use_nvml: bool = True                 # NVML for GPU power
     pue: float = 1.1                      # Power Usage Effectiveness multiplier
+    # RAPL powercap search paths (checked in order)
+    rapl_search_paths: list[str] = field(default_factory=lambda: [
+        "/sys/class/powercap",                          # Default Linux path
+        os.getenv("RAPL_POWERCAP_PATH", ""),            # User override via env var
+        f"/scratch2/{os.getenv('USER', '')}-logs/powercap",  # Penn State server layout
+    ])
 
 POWER_CONFIG = PowerConfig()
 

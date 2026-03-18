@@ -177,36 +177,76 @@ class PowerMonitor:
     # ─── RAPL (CPU/DRAM) ─────────────────────────────────────────────────
 
     def _init_rapl(self):
-        """Discover RAPL energy counters."""
+        """
+        Discover RAPL energy counters.
+        Searches multiple powercap paths (default /sys/class/powercap,
+        custom server paths like /scratch2/<user>-logs/powercap, or
+        RAPL_POWERCAP_PATH env var).
+        Aggregates all CPU packages (multi-socket) into a single reading.
+        """
         if not POWER_CONFIG.use_rapl:
             return
         import glob as globmod
-        for name_path in globmod.glob("/sys/class/powercap/intel-rapl:*/name"):
+
+        # Find the first powercap base that contains intel-rapl
+        rapl_base = None
+        for search_path in POWER_CONFIG.rapl_search_paths:
+            if not search_path:
+                continue
+            candidate = os.path.join(search_path, "intel-rapl")
+            if os.path.isdir(candidate):
+                rapl_base = candidate
+                break
+
+        if rapl_base is None:
+            return
+
+        # Discover all CPU packages and DRAM domains
+        self._rapl_cpu_paths = []  # List of paths for multi-socket aggregation
+        for name_path in globmod.glob(os.path.join(rapl_base, "intel-rapl:*", "name")):
             try:
                 name = open(name_path).read().strip().lower()
                 energy_path = name_path.replace("/name", "/energy_uj")
                 if os.path.exists(energy_path):
                     if name.startswith("package-"):
-                        self._rapl_paths["cpu"] = energy_path
-                    elif name == "dram" or "dram" in name:
+                        self._rapl_cpu_paths.append(energy_path)
+                    elif "dram" in name:
                         self._rapl_paths["dram"] = energy_path
             except Exception:
                 continue
 
-        # Also check for DRAM in sub-domains
-        for name_path in globmod.glob("/sys/class/powercap/intel-rapl:*/intel-rapl:*:*/name"):
+        # Check sub-domains for DRAM and core
+        for name_path in globmod.glob(os.path.join(rapl_base, "intel-rapl:*", "intel-rapl:*:*", "name")):
             try:
                 name = open(name_path).read().strip().lower()
                 energy_path = name_path.replace("/name", "/energy_uj")
-                if "dram" in name and os.path.exists(energy_path):
-                    self._rapl_paths["dram"] = energy_path
+                if os.path.exists(energy_path):
+                    if "dram" in name:
+                        self._rapl_paths["dram"] = energy_path
             except Exception:
                 continue
 
+        # Store combined package path info
+        if self._rapl_cpu_paths:
+            self._rapl_paths["cpu"] = "multi"  # Sentinel: use _rapl_cpu_paths
+            print(f"  Power monitor: RAPL found at {rapl_base} ({len(self._rapl_cpu_paths)} CPU package(s))")
+
     def _read_rapl_uj(self, domain: str) -> int | None:
-        """Read RAPL energy counter in microjoules."""
+        """Read RAPL energy counter in microjoules.
+        For CPU, aggregates across all packages (multi-socket).
+        """
+        if domain == "cpu" and hasattr(self, "_rapl_cpu_paths") and self._rapl_cpu_paths:
+            try:
+                total = 0
+                for path in self._rapl_cpu_paths:
+                    with open(path, "r") as f:
+                        total += int(f.read().strip())
+                return total
+            except Exception:
+                return None
+
         path = self._rapl_paths.get(domain)
-        if path is None:
+        if path is None or path == "multi":
             return None
         try:
             with open(path, "r") as f:
